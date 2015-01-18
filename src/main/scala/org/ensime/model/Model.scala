@@ -2,21 +2,46 @@ package org.ensime.model
 
 import java.io.File
 import org.apache.commons.vfs2.FileObject
+import org.ensime.core.RichPresentationCompiler
 import org.ensime.util.FileEdit
 import scala.collection.mutable
 import scala.reflect.internal.util.{ RangePosition, NoPosition, Position }
 
 import org.ensime.config._
-import org.ensime.server._
 import org.ensime.indexer.DatabaseService._
 
 import org.ensime.util.RichFile._
 import scala.tools.nsc.io.AbstractFile
 
-trait EntityInfo {
+sealed trait EntityInfo {
   val name: String
   val members: Iterable[EntityInfo]
 }
+
+object SourceSymbol {
+  val allSymbols: Set[SourceSymbol] = Set(
+    ObjectSymbol, ClassSymbol, TraitSymbol, PackageSymbol, ConstructorSymbol, ImportedNameSymbol, TypeParamSymbol,
+    ParamSymbol, VarFieldSymbol, ValFieldSymbol, OperatorFieldSymbol, VarSymbol, ValSymbol, FunctionCallSymbol)
+}
+
+sealed trait RefactorType
+
+sealed trait SourceSymbol
+
+case object ObjectSymbol extends SourceSymbol
+case object ClassSymbol extends SourceSymbol
+case object TraitSymbol extends SourceSymbol
+case object PackageSymbol extends SourceSymbol
+case object ConstructorSymbol extends SourceSymbol
+case object ImportedNameSymbol extends SourceSymbol
+case object TypeParamSymbol extends SourceSymbol
+case object ParamSymbol extends SourceSymbol
+case object VarFieldSymbol extends SourceSymbol
+case object ValFieldSymbol extends SourceSymbol
+case object OperatorFieldSymbol extends SourceSymbol
+case object VarSymbol extends SourceSymbol
+case object ValSymbol extends SourceSymbol
+case object FunctionCallSymbol extends SourceSymbol
 
 sealed trait PosNeeded
 case object PosNeededNo extends PosNeeded
@@ -74,7 +99,7 @@ case class SymbolDesignations(
 case class SymbolDesignation(
   start: Int,
   end: Int,
-  symType: scala.Symbol)
+  symType: SourceSymbol)
 
 case class SymbolInfo(
   name: String,
@@ -213,7 +238,7 @@ case class NamedTypeMemberInfo(
 
 class PackageMemberInfoLight(val name: String)
 
-trait TypeInfo extends EntityInfo {
+sealed trait TypeInfo extends EntityInfo {
   val name: String
   val id: Int
   val declaredAs: scala.Symbol
@@ -225,12 +250,12 @@ trait TypeInfo extends EntityInfo {
 }
 
 case class BasicTypeInfo(
-  override val name: String,
+  name: String,
   id: Int,
   declaredAs: scala.Symbol,
   fullName: String,
   args: Iterable[TypeInfo],
-  override val members: Iterable[EntityInfo],
+  members: Iterable[EntityInfo],
   pos: Option[SourcePosition],
   outerTypeId: Option[Int]) extends TypeInfo
 
@@ -266,13 +291,15 @@ trait ModelBuilders { self: RichPresentationCompiler =>
   private val typeCache = new mutable.HashMap[Int, Type]
   private val typeCacheReverse = new mutable.HashMap[Type, Int]
 
-  def clearTypeCache() {
+  def clearTypeCache(): Unit = {
     typeCache.clear()
     typeCacheReverse.clear()
   }
+
   def typeById(id: Int): Option[Type] = {
     typeCache.get(id)
   }
+
   def cacheType(tpe: Type): Int = {
     if (typeCacheReverse.contains(tpe)) {
       typeCacheReverse(tpe)
@@ -440,25 +467,27 @@ trait ModelBuilders { self: RichPresentationCompiler =>
         case et: ExistentialType => et.underlying
         case t => t
       }
+      def basicTypeInfo(tpe: Type): BasicTypeInfo = {
+        val typeSym = tpe.typeSymbol
+        val sym = if (typeSym.isModuleClass)
+          typeSym.sourceModule else typeSym
+        val symPos = locateSymbolPos(sym, needPos)
+        val outerTypeId = outerClass(typeSym).map(s => cacheType(s.tpe))
+        new BasicTypeInfo(
+          typeShortName(tpe),
+          cacheType(tpe),
+          declaredAs(typeSym),
+          typeFullName(tpe),
+          tpe.typeArgs.map(TypeInfo(_)),
+          members,
+          symPos,
+          outerTypeId)
+      }
       tpe match {
         case tpe: MethodType => ArrowTypeInfo(tpe)
         case tpe: PolyType => ArrowTypeInfo(tpe)
-        case tpe: Type =>
-          val args = tpe.typeArgs.map(TypeInfo(_))
-          val typeSym = tpe.typeSymbol
-          val sym = if (typeSym.isModuleClass)
-            typeSym.sourceModule else typeSym
-          val symPos = locateSymbolPos(sym, needPos)
-          val outerTypeId = outerClass(typeSym).map(s => cacheType(s.tpe))
-          new BasicTypeInfo(
-            typeShortName(tpe),
-            cacheType(tpe),
-            declaredAs(typeSym),
-            typeFullName(tpe),
-            args,
-            members,
-            symPos,
-            outerTypeId)
+        case tpe: NullaryMethodType => basicTypeInfo(tpe.resultType)
+        case tpe: Type => basicTypeInfo(tpe)
         case _ => nullInfo
       }
     }
@@ -470,8 +499,9 @@ trait ModelBuilders { self: RichPresentationCompiler =>
 
   object ParamSectionInfo {
     def apply(params: Iterable[Symbol]): ParamSectionInfo = {
-      new ParamSectionInfo(params.map { s => (s.nameString, TypeInfo(s.tpe)) },
-        params.forall { s => s.isImplicit })
+      new ParamSectionInfo(
+        params.map { s => (s.nameString, TypeInfo(s.tpe)) },
+        params.exists(_.isImplicit))
     }
   }
 
@@ -547,9 +577,6 @@ trait ModelBuilders { self: RichPresentationCompiler =>
         None)
     }
 
-    def nullInfo() = {
-      new CompletionInfo("NA", CompletionSignature(List.empty, ""), -1, false, 0, None)
-    }
   }
 
   object NamedTypeMemberInfo {

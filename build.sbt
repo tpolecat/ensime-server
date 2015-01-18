@@ -1,9 +1,6 @@
 import sbt._
 import java.io._
-import java.util.concurrent.atomic.AtomicReference
-import net.virtualvoid.sbt.graph.Plugin.graphSettings
 import ScoverageSbtPlugin.ScoverageKeys
-import org.scoverage.coveralls.CoverallsPlugin.coverallsSettings
 import scala.util.Try
 
 // NOTE: the following skips the slower tests
@@ -80,8 +77,6 @@ scalacOptions in Compile ++= Seq(
   "-encoding", "UTF-8", "-target:jvm-1.6", "-feature", "-deprecation",
   "-Xfatal-warnings",
   "-language:postfixOps", "-language:implicitConversions"
-  //"-P:wartremover:only-warn-traverser:org.brianmckenna.wartremover.warts.Unsafe"
-  //"-P:wartremover:traverser:org.brianmckenna.wartremover.warts.Unsafe"
 )
 
 javacOptions in (Compile, compile) ++= Seq (
@@ -140,16 +135,12 @@ unmanagedSourceDirectories in Test += baseDirectory.value / "src/example-simple"
 // full stacktraces in scalatest
 //testOptions in Test += Tests.Argument("-oF")
 
-graphSettings
-
 scalariformSettings
 
 // let's bump this every time we get more tests
-ScoverageKeys.coverageMinimum :=73
+ScoverageKeys.coverageMinimum := 75
 
 ScoverageKeys.coverageFailOnMinimum := true
-
-coverallsSettings
 
 licenses := Seq("BSD 3 Clause" -> url("http://opensource.org/licenses/BSD-3-Clause"))
 

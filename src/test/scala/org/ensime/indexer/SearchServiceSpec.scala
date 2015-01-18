@@ -5,7 +5,7 @@ import org.scalatest.FunSpec
 import org.scalatest.Matchers
 import akka.event.slf4j.SLF4JLogging
 import org.ensime.config._
-import org.ensime.test.TestUtil._
+import org.ensime.util.TestUtil._
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
 import pimpathon.file._
@@ -113,9 +113,9 @@ class SearchServiceSpec extends FunSpec with Matchers with SLF4JLogging {
       )
 
       searches(
-        "org.ensime.server.RichPresentationCompiler",
+        "org.ensime.core.RichPresentationCompiler",
         "RichPres", "richpres",
-        "o e s Rich", "o.e.s.rich",
+        "o e c Rich", "o.e.c.rich",
         "RPC" // <= CamelCaseAwesomeNess
       )
     }

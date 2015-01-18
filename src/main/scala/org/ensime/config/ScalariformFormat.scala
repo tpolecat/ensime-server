@@ -7,6 +7,8 @@ import scalariform.formatter.preferences._
 trait ScalariformFormat {
   this: BasicFormats =>
 
+  // TODO sexp formatting should live in server.protocol
+
   implicit object FormattingPreferencesFormat extends SexpFormat[FormattingPreferences] {
 
     private def key(d: PreferenceDescriptor[_]) = SexpSymbol(":" + d.key)

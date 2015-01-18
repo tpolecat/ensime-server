@@ -7,14 +7,15 @@ import java.net.{ InetAddress, ServerSocket, Socket }
 import java.util.concurrent.atomic.AtomicBoolean
 
 import akka.actor._
+import org.ensime.EnsimeApi
 import org.ensime.config._
-import org.ensime.protocol._
-import org.ensime.protocol.swank.SwankProtocol
+import org.ensime.core.Project
+import org.ensime.server.protocol.swank.SwankProtocol
+import org.ensime.server.protocol.{ OutgoingMessageEvent, IncomingMessageEvent, Protocol }
 import org.ensime.util._
 import org.slf4j._
 import org.slf4j.bridge.SLF4JBridgeHandler
 
-import scala.io.Source
 import scala.util.Properties
 import scala.util.Properties._
 
@@ -49,12 +50,12 @@ object Server {
 class Server(config: EnsimeConfig,
     host: String,
     requestedPort: Int,
-    connectionCreator: (ActorSystem, ActorRef, RPCTarget) => Protocol) {
+    connectionCreator: (ActorSystem, ActorRef, EnsimeApi) => Protocol) {
 
   import org.ensime.server.Server.log
 
   // the config file parsing will attempt to create directories that are expected
-  require(config.cacheDir.isDirectory, config.cacheDir + " is not a valid cache directory")
+  require(config.cacheDir.isDirectory, "" + config.cacheDir + " is not a valid cache directory")
 
   val actorSystem = ActorSystem.create()
   // TODO move this to only be started when we want to receive
@@ -68,7 +69,7 @@ class Server(config: EnsimeConfig,
 
   val project = new Project(config, actorSystem)
 
-  def start() {
+  def start(): Unit = {
     project.initProject()
     startSocketListener()
   }
@@ -76,7 +77,7 @@ class Server(config: EnsimeConfig,
   private val hasShutdownFlag = new AtomicBoolean(false)
   def startSocketListener(): Unit = {
     val t = new Thread(new Runnable() {
-      def run() {
+      def run(): Unit = {
         try {
           while (!hasShutdownFlag.get()) {
             try {
@@ -97,7 +98,7 @@ class Server(config: EnsimeConfig,
     t.start()
   }
 
-  def shutdown() {
+  def shutdown(): Unit = {
     log.info("Shutting down server")
     hasShutdownFlag.set(true)
     listener.close()
@@ -134,7 +135,7 @@ class SocketReader(socket: Socket, protocol: Protocol, handler: ActorRef) extend
   val in = new BufferedInputStream(socket.getInputStream)
   val reader = new InputStreamReader(in, "UTF-8")
 
-  override def run() {
+  override def run(): Unit = {
     try {
       while (true) {
         val msg: WireFormat = protocol.readMessage(reader)
@@ -160,14 +161,14 @@ class SocketReader(socket: Socket, protocol: Protocol, handler: ActorRef) extend
  * @param connectionCreator Function to create protocol instance given actorSystem and the peer (this) ref
  */
 class SocketHandler(socket: Socket,
-    rpcTarget: RPCTarget,
-    connectionCreator: (ActorSystem, ActorRef, RPCTarget) => Protocol) extends Actor with ActorLogging {
+    rpcTarget: EnsimeApi,
+    connectionCreator: (ActorSystem, ActorRef, EnsimeApi) => Protocol) extends Actor with ActorLogging {
   val protocol = connectionCreator(context.system, self, rpcTarget)
 
   val reader = new SocketReader(socket, protocol, self)
   val out = new BufferedOutputStream(socket.getOutputStream)
 
-  def write(value: WireFormat) {
+  def write(value: WireFormat): Unit = {
     try {
       protocol.writeMessage(value, out)
     } catch {
@@ -177,7 +178,7 @@ class SocketHandler(socket: Socket,
     }
   }
 
-  override def preStart() {
+  override def preStart(): Unit = {
     reader.start()
   }
 
