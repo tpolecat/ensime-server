@@ -11,8 +11,6 @@ import org.ensime.indexer.IndexService.FqnIndex
 
 import org.ensime.api._
 
-import scala.slick.driver.H2Driver.simple._
-
 import scalaz.std.list._
 
 class DatabaseService(dir: File) extends SLF4JLogging {
