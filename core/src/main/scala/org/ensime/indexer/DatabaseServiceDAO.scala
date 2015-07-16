@@ -21,17 +21,24 @@ class DatabaseServiceDAO(datasource: BoneCPDataSource) {
 
   /** A program to shut down the database *and* the underlying DataSource. */
   val shutdown: IO[Unit] =
-    sql"shutdown".update.run.void.transact(xa) *> xa.configure(ds => IO(ds.close()))
+    for {
+      c <- xa.configure(ds => IO(ds.getConnection))
+      _ <- HC.prepareStatement("shutdown")(HPS.executeUpdate).transK[IO].run(c)
+      _ <- xa.configure(ds => IO(ds.close()))
+    } yield ()
 
   /** A program to return a list of all checks. */
   val allFiles: IO[List[FileCheck]] =
-    sql"SELECT id, filename, timestamp FROM FILE_CHECK".query[FileCheck].list.transact(xa)
+    sql"""
+      SELECT "id", "filename", "timestamp"
+      FROM "FILECHECKS"
+    """.query[FileCheck].list.transact(xa)
 
   /** Construct a program to remove symbols and checks associated with the files at the given URIs. */
   def removeFiles[F[_]: Foldable](uris: F[String]): IO[Int] = {
     val (set, go) = inSet(1, uris, HPS.executeUpdate)
-    val d1 = HC.prepareStatement(s"DELETE FROM FQN_SYMBOLS WHERE file IN $set")(go)
-    val d2 = HC.prepareStatement(s"DELETE FROM FILECHECKS WHERE filename IN $set")(go)
+    val d1 = HC.prepareStatement(s"""DELETE FROM "FQN_SYMBOLS" WHERE "file" IN $set""")(go)
+    val d2 = HC.prepareStatement(s"""DELETE FROM "FILECHECKS" WHERE "filename" IN $set""")(go)
     (d1 *> d2).transact(xa)
   }
 
@@ -40,8 +47,11 @@ class DatabaseServiceDAO(datasource: BoneCPDataSource) {
    * than the provided `modified` date, or does not exist at all.
    */
   def outOfDate(uri: String, modified: Long): IO[Boolean] =
-    sql"SELECT timestamp FROM FILECHECKS WHERE filename = ${uri}"
-      .query[Timestamp]
+    sql"""
+      SELECT "timestamp"
+      FROM "FILECHECKS"
+      WHERE "filename" = ${uri}
+    """.query[Timestamp]
       .list.map(_.headOption.fold(true)(_.getTime < modified))
       .transact(xa)
 
@@ -49,12 +59,12 @@ class DatabaseServiceDAO(datasource: BoneCPDataSource) {
   def persist[F[_]: Traverse](check: FileCheck, symbols: F[FqnSymbol]): IO[Unit] = {
     val ins1: ConnectionIO[Int] =
       sql"""
-        INSERT INTO FILECHECKS (filename, timestamp) 
+        INSERT INTO "FILECHECKS" ("filename", "timestamp") 
         VALUES (${check.filename}, ${check.timestamp})
       """.update.run
     def ins2(s: FqnSymbol): ConnectionIO[Int] =
       sql"""
-        INSERT INTO FQN_SYMBOLS (file, path, fqn, descriptor, internal, "source handle", "line in source", "offset in source")
+        INSERT INTO FQN_SYMBOLS ("file", "path", "fqn", "descriptor", "internal", "source handle", "line in source", "offset in source")
         VALUES (${s.file}, ${s.path}, ${s.fqn}, ${s.descriptor}, ${s.internal}, ${s.source}, ${s.line}, ${s.offset})
       """.update.run
     (ins1 *> symbols.traverseU_(ins2)).transact(xa)
@@ -63,18 +73,18 @@ class DatabaseServiceDAO(datasource: BoneCPDataSource) {
   /** Construct a program to find the symbol associated with the given FQN. */
   def find(fqn: String): IO[Option[FqnSymbol]] =
     sql"""
-      SELECT (id, file, path, fqn, descriptor, internal, "source handle", "line in source", "offset in source")
-      FROM FQN_SYMBOLS 
-      WHERE fqn = $fqn
+      SELECT "id", "file", "path", "fqn", "descriptor", "internal", "source handle", "line in source", "offset in source"
+      FROM "FQN_SYMBOLS"
+      WHERE "fqn" = $fqn
     """.query[FqnSymbol].list.map(_.headOption).transact(xa)
 
   /** Construct a program to find the symbols associated with the given FQNs. */
   def find[F[_]: Foldable](fqns: F[String]): IO[List[FqnSymbol]] = {
     val (set, go) = inSet(1, fqns, HPS.executeQuery(HRS.list[FqnSymbol]))
-    val sql = """
-      SELECT (id, file, path, fqn, descriptor, internal, "source handle", "line in source", "offset in source")
-      FROM FQN_SYMBOLS
-      WHERE fqn in $set
+    val sql = s"""
+      SELECT "id", "file", "path", "fqn", "descriptor", "internal", "source handle", "line in source", "offset in source"
+      FROM "FQN_SYMBOLS"
+      WHERE "fqn" in $set
     """
     HC.prepareStatement(sql)(go).transact(xa)
   }
