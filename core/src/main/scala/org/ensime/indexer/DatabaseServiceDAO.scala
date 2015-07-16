@@ -52,7 +52,7 @@ class DatabaseServiceDAO(datasource: BoneCPDataSource) {
       FROM "FILECHECKS"
       WHERE "filename" = ${uri}
     """.query[Timestamp]
-      .list.map(_.headOption.fold(true)(_.getTime < modified))
+      .option.map(_.fold(true)(_.getTime < modified))
       .transact(xa)
 
   /** Construct a program to save the given check and symbol set to the database. */
