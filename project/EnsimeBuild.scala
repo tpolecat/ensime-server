@@ -81,6 +81,10 @@ object EnsimeBuild extends Build with JdkResolver {
       "Sonatype Nexus Repository Manager", "oss.sonatype.org",
       sys.env.getOrElse("SONATYPE_USERNAME", ""),
       sys.env.getOrElse("SONATYPE_PASSWORD", "")
+    ),
+    resolvers ++= Seq(
+      "tpolecat" at "http://dl.bintray.com/tpolecat/maven",
+      "Scalaz Bintray Repo" at "http://dl.bintray.com/scalaz/releases"
     )
   )
 
@@ -115,6 +119,11 @@ object EnsimeBuild extends Build with JdkResolver {
     "org.slf4j" % "jcl-over-slf4j" % "1.7.12"
   )
   val akkaVersion = "2.3.11"
+  val doobieVersion = "0.2.2"
+  lazy val doobie = Seq(
+    "org.tpolecat" %% "doobie-core"       % doobieVersion,
+    "org.tpolecat" %% "doobie-contrib-h2" % doobieVersion
+  )
 
   ////////////////////////////////////////////////
   // utils
@@ -219,7 +228,6 @@ object EnsimeBuild extends Build with JdkResolver {
   ).settings(
     libraryDependencies ++= Seq(
       "com.h2database" % "h2" % "1.4.187",
-      "com.typesafe.slick" %% "slick" % "2.1.0",
       "com.jolbox" % "bonecp" % "0.8.0.RELEASE",
       // bonecp has an old version of guava
       "com.google.guava" % "guava" % "18.0",
@@ -238,7 +246,7 @@ object EnsimeBuild extends Build with JdkResolver {
       "org.scala-lang.modules" %% "scala-xml" % "1.0.4",
       "commons-lang" % "commons-lang" % "2.6",
       "commons-io" % "commons-io" % "2.4" % "test,it"
-    ) ++ logback ++ testLibs(scalaVersion.value, "it,test")
+    ) ++ logback ++ testLibs(scalaVersion.value, "it,test") ++ doobie
   )
 
   lazy val server = Project("server", file("server")).dependsOn(
